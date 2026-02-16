@@ -36,6 +36,7 @@ const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecogni
 let recognition = null;
 let websocket = null;
 let isListening = false;
+let shouldKeepListening = false;
 let shouldReconnect = true;
 let reconnectTimer = null;
 let reconnectAttempts = 0;
@@ -243,11 +244,26 @@ function initRecognition() {
 
   recognition.onend = () => {
     isListening = false;
-    setSttStatus("중지됨");
+    if (shouldKeepListening) {
+      setSttStatus("대기 중 (자동 재시작)");
+      setTimeout(() => {
+        if (!recognition || isListening || !shouldKeepListening) return;
+        try {
+          recognition.start();
+        } catch (_error) {
+          // 브라우저 상태에 따라 start 예외가 날 수 있어 다음 end 주기에서 재시도
+        }
+      }, 250);
+    } else {
+      setSttStatus("중지됨");
+    }
     updateButtons();
   };
 
   recognition.onerror = (event) => {
+    if (event.error === "not-allowed" || event.error === "service-not-allowed" || event.error === "audio-capture") {
+      shouldKeepListening = false;
+    }
     setSttStatus(`오류 (${event.error})`);
     updateButtons();
   };
@@ -442,6 +458,7 @@ if (reportDateEl) reportDateEl.value = toYmd();
 
 startBtn.addEventListener("click", () => {
   if (!recognition) return;
+  shouldKeepListening = true;
   recognition.lang = langSelectEl.value;
   try {
     recognition.start();
@@ -452,6 +469,7 @@ startBtn.addEventListener("click", () => {
 
 stopBtn.addEventListener("click", () => {
   if (!recognition) return;
+  shouldKeepListening = false;
   recognition.stop();
 });
 
@@ -524,6 +542,7 @@ if (exportCsvBtn) {
 }
 
 window.addEventListener("beforeunload", () => {
+  shouldKeepListening = false;
   shouldReconnect = false;
   clearReconnectTimer();
   if (recognition && isListening) recognition.stop();
