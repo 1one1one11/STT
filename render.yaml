@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: daily-dashboard-stt
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm run ws:server
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: PORT
+        value: 10000

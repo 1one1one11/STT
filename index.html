@@ -1,14 +1,67 @@
 <!doctype html>
-<html lang="en">
+<html lang="ko">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Hello World</title>
-  <link href='/style.css' rel='stylesheet'>
+  <title>실시간 STT 대시보드</title>
+  <link href="/style.css" rel="stylesheet" />
 </head>
 <body>
-  <h1>Hello, world!</h1>
-  <button onclick="console.log('hello');">Press me</button>
+  <main class="container">
+    <h1>실시간 음성 인식(STT)</h1>
+
+    <section class="panel controls">
+      <button id="startBtn" type="button">인식 시작</button>
+      <button id="stopBtn" type="button">중지</button>
+      <button id="clearBtn" type="button">초기화</button>
+      <button id="saveBtn" type="button">텍스트 저장</button>
+    </section>
+
+    <section class="panel options">
+      <label class="inline-field">
+        <span>언어</span>
+        <select id="langSelect">
+          <option value="ko-KR" selected>한국어 (ko-KR)</option>
+          <option value="en-US">English (en-US)</option>
+          <option value="ja-JP">日本語 (ja-JP)</option>
+        </select>
+      </label>
+      <label class="check">
+        <input id="autoNewline" type="checkbox" checked />
+        확정 문장마다 줄바꿈
+      </label>
+    </section>
+
+    <section class="panel websocket">
+      <h2>WebSocket 전송</h2>
+      <div class="ws-row">
+        <label class="inline-field ws-url">
+          <span>서버 URL</span>
+          <input id="wsUrl" type="text" value="ws://localhost:8080" />
+        </label>
+        <button id="connectBtn" type="button">연결</button>
+        <button id="disconnectBtn" type="button">해제</button>
+      </div>
+      <div class="ws-row">
+        <label class="check">
+          <input id="autoSend" type="checkbox" checked />
+          확정 텍스트 자동 전송
+        </label>
+        <button id="sendNowBtn" type="button">확정 텍스트 수동 전송</button>
+      </div>
+      <p id="wsStatus" class="status">WS 상태: 미연결</p>
+      <label for="wsMessages">서버 응답(ACK/WELCOME)</label>
+      <textarea id="wsMessages" rows="6" placeholder="서버에서 수신한 메시지가 표시됩니다." readonly></textarea>
+    </section>
+
+    <section class="panel">
+      <p id="sttStatus" class="status">STT 상태: 대기 중</p>
+      <label for="finalText">확정 텍스트</label>
+      <textarea id="finalText" rows="10" placeholder="확정된 음성 인식 텍스트가 표시됩니다."></textarea>
+      <label for="interimText">임시 텍스트</label>
+      <textarea id="interimText" rows="4" placeholder="인식 중인 임시 결과"></textarea>
+    </section>
+  </main>
   <script defer type="text/javascript" src="/main.js"></script>
 </body>
 </html>

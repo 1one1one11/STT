@@ -1,1 +1,162 @@
-/* Add styles here */
+:root {
+  color-scheme: light;
+  --bg: #f3f6fb;
+  --panel: #ffffff;
+  --text: #1a2133;
+  --muted: #59627a;
+  --primary: #1f7ae0;
+  --primary-hover: #1665bb;
+  --border: #dbe3f2;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Noto Sans KR", "Apple SD Gothic Neo", sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(circle at top right, #d2e4ff 0%, transparent 42%),
+    linear-gradient(180deg, #f8fbff 0%, var(--bg) 70%);
+  min-height: 100vh;
+}
+
+.container {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 32px 18px 48px;
+}
+
+h1 {
+  margin: 0 0 20px;
+  font-size: 1.9rem;
+}
+
+h2 {
+  margin: 0 0 12px;
+  font-size: 1.15rem;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 14px;
+  box-shadow: 0 8px 20px rgba(35, 57, 94, 0.06);
+}
+
+.controls,
+.ws-row,
+.options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+button,
+select,
+input[type="text"] {
+  height: 38px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  padding: 0 12px;
+  font-size: 0.96rem;
+}
+
+button {
+  background: var(--primary);
+  color: white;
+  border: none;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+button:hover:not(:disabled) {
+  background: var(--primary-hover);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+input[type="text"],
+select {
+  background: #fff;
+  color: var(--text);
+}
+
+.inline-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+}
+
+.ws-url {
+  flex: 1 1 340px;
+}
+
+.ws-url input {
+  width: 100%;
+}
+
+.status {
+  margin: 0 0 10px;
+  color: var(--muted);
+}
+
+label {
+  display: block;
+  margin: 8px 0 6px;
+  color: var(--muted);
+}
+
+textarea {
+  width: 100%;
+  resize: vertical;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  padding: 12px;
+  font-size: 0.96rem;
+  line-height: 1.5;
+}
+
+#finalText {
+  min-height: 180px;
+}
+
+#interimText {
+  min-height: 100px;
+  background: #f7f9fd;
+}
+
+#wsMessages {
+  min-height: 130px;
+  background: #f5f8ff;
+}
+
+@media (max-width: 640px) {
+  h1 {
+    font-size: 1.5rem;
+  }
+
+  .container {
+    padding: 22px 14px 30px;
+  }
+
+  .panel {
+    padding: 12px;
+  }
+}
