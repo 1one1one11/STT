@@ -42,6 +42,7 @@ let reconnectTimer = null;
 let reconnectAttempts = 0;
 const WS_MESSAGE_LIMIT = 80;
 const MAX_RECONNECT_DELAY_MS = 10000;
+const WS_URL_STORAGE_KEY = "stt_ws_url";
 
 function setSttStatus(message) {
   sttStatusEl.textContent = `STT 상태: ${message}`;
@@ -99,6 +100,31 @@ function normalizeWsUrl(rawUrl) {
     return parsed.toString();
   } catch (_error) {
     return value;
+  }
+}
+
+function saveWsUrl(url) {
+  try {
+    localStorage.setItem(WS_URL_STORAGE_KEY, url);
+  } catch (_error) {
+    // ignore storage errors
+  }
+}
+
+function loadSavedWsUrl() {
+  try {
+    return localStorage.getItem(WS_URL_STORAGE_KEY) || "";
+  } catch (_error) {
+    return "";
+  }
+}
+
+function isLikelyInvalidWsHost(url) {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname.endsWith(".pages.dev");
+  } catch (_error) {
+    return false;
   }
 }
 
@@ -166,12 +192,22 @@ function sendWsPayload(text) {
 }
 
 function connectWebSocket() {
+  shouldReconnect = true;
   const url = normalizeWsUrl(wsUrlEl.value);
   if (!url) {
     setWsStatus("URL을 입력하세요");
     return;
   }
+  if (isLikelyInvalidWsHost(url)) {
+    setWsStatus("WS URL 오류: pages.dev 말고 Render 백엔드 wss 주소를 입력하세요");
+    appendWsMessage(`[${new Date().toLocaleTimeString()}] 잘못된 WS URL (${url})`);
+    return;
+  }
+  if (websocket && (websocket.readyState === WebSocket.OPEN || websocket.readyState === WebSocket.CONNECTING)) {
+    return;
+  }
   wsUrlEl.value = url;
+  saveWsUrl(url);
   clearReconnectTimer();
 
   try {
@@ -449,7 +485,10 @@ async function exportReport(format) {
 }
 
 const suggestedWsUrl = `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}`;
-if (!wsUrlEl.value.trim() || wsUrlEl.value.trim() === "ws://localhost:8080") {
+const savedWsUrl = normalizeWsUrl(loadSavedWsUrl());
+if (savedWsUrl) {
+  wsUrlEl.value = savedWsUrl;
+} else if (!wsUrlEl.value.trim()) {
   wsUrlEl.value = suggestedWsUrl;
 }
 
