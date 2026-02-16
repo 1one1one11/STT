@@ -62,6 +62,46 @@
       <label for="interimText">임시 텍스트</label>
       <textarea id="interimText" rows="4" placeholder="인식 중인 임시 결과"></textarea>
     </section>
+
+    <section class="panel">
+      <h2>미인식 세션 수기 보정</h2>
+      <div class="ws-row">
+        <label class="inline-field">
+          <span>날짜</span>
+          <input id="correctionDate" type="date" />
+        </label>
+        <button id="loadUnrecognizedBtn" type="button">미인식 조회</button>
+      </div>
+      <label for="sessionSelect">세션</label>
+      <select id="sessionSelect"></select>
+      <div class="ws-row">
+        <label class="inline-field">
+          <span>고객명</span>
+          <input id="correctCustomerName" type="text" placeholder="예: 홍길동" />
+        </label>
+        <label class="inline-field">
+          <span>작업자</span>
+          <input id="correctedBy" type="text" placeholder="예: seo.pb" />
+        </label>
+        <button id="applyCorrectionBtn" type="button">보정 저장</button>
+      </div>
+      <p id="correctionStatus" class="status">보정 상태: 대기 중</p>
+    </section>
+
+    <section class="panel">
+      <h2>고객별 영업일지 초안</h2>
+      <div class="ws-row">
+        <label class="inline-field">
+          <span>날짜</span>
+          <input id="reportDate" type="date" />
+        </label>
+        <button id="loadReportBtn" type="button">초안 조회</button>
+        <button id="exportMdBtn" type="button">MD 내보내기</button>
+        <button id="exportCsvBtn" type="button">CSV 내보내기</button>
+      </div>
+      <p id="reportStatus" class="status">리포트 상태: 대기 중</p>
+      <textarea id="reportPreview" rows="14" readonly placeholder="고객별 영업일지 초안이 표시됩니다."></textarea>
+    </section>
   </main>
   <script defer type="text/javascript" src="/main.js"></script>
 </body>

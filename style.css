@@ -59,7 +59,8 @@ h2 {
 
 button,
 select,
-input[type="text"] {
+input[type="text"],
+input[type="date"] {
   height: 38px;
   border-radius: 9px;
   border: 1px solid var(--border);
@@ -85,6 +86,7 @@ button:disabled {
 }
 
 input[type="text"],
+input[type="date"],
 select {
   background: #fff;
   color: var(--text);
@@ -145,6 +147,16 @@ textarea {
 #wsMessages {
   min-height: 130px;
   background: #f5f8ff;
+}
+
+#sessionSelect {
+  width: 100%;
+  margin-bottom: 10px;
+}
+
+#reportPreview {
+  min-height: 240px;
+  background: #f8fbff;
 }
 
 @media (max-width: 640px) {

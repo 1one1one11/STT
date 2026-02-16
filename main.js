@@ -17,11 +17,30 @@ const connectBtn = document.getElementById("connectBtn");
 const disconnectBtn = document.getElementById("disconnectBtn");
 const sendNowBtn = document.getElementById("sendNowBtn");
 
+const correctionDateEl = document.getElementById("correctionDate");
+const loadUnrecognizedBtn = document.getElementById("loadUnrecognizedBtn");
+const sessionSelectEl = document.getElementById("sessionSelect");
+const correctCustomerNameEl = document.getElementById("correctCustomerName");
+const correctedByEl = document.getElementById("correctedBy");
+const applyCorrectionBtn = document.getElementById("applyCorrectionBtn");
+const correctionStatusEl = document.getElementById("correctionStatus");
+
+const reportDateEl = document.getElementById("reportDate");
+const loadReportBtn = document.getElementById("loadReportBtn");
+const exportMdBtn = document.getElementById("exportMdBtn");
+const exportCsvBtn = document.getElementById("exportCsvBtn");
+const reportStatusEl = document.getElementById("reportStatus");
+const reportPreviewEl = document.getElementById("reportPreview");
+
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recognition = null;
 let websocket = null;
 let isListening = false;
+let shouldReconnect = true;
+let reconnectTimer = null;
+let reconnectAttempts = 0;
 const WS_MESSAGE_LIMIT = 80;
+const MAX_RECONNECT_DELAY_MS = 10000;
 
 function setSttStatus(message) {
   sttStatusEl.textContent = `STT 상태: ${message}`;
@@ -29,6 +48,18 @@ function setSttStatus(message) {
 
 function setWsStatus(message) {
   wsStatusEl.textContent = `WS 상태: ${message}`;
+}
+
+function setCorrectionStatus(message) {
+  if (correctionStatusEl) {
+    correctionStatusEl.textContent = `보정 상태: ${message}`;
+  }
+}
+
+function setReportStatus(message) {
+  if (reportStatusEl) {
+    reportStatusEl.textContent = `리포트 상태: ${message}`;
+  }
 }
 
 function setSessionStatus(session) {
@@ -47,6 +78,38 @@ function setSessionStatus(session) {
 
 function isWsConnected() {
   return websocket && websocket.readyState === WebSocket.OPEN;
+}
+
+function clearReconnectTimer() {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+}
+
+function normalizeWsUrl(rawUrl) {
+  const value = String(rawUrl || "").trim();
+  if (!value) return "";
+
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol === "http:") parsed.protocol = "ws:";
+    if (parsed.protocol === "https:") parsed.protocol = "wss:";
+    return parsed.toString();
+  } catch (_error) {
+    return value;
+  }
+}
+
+function scheduleReconnect() {
+  if (!shouldReconnect) return;
+  clearReconnectTimer();
+  reconnectAttempts += 1;
+  const delay = Math.min(1000 * 2 ** (reconnectAttempts - 1), MAX_RECONNECT_DELAY_MS);
+  setWsStatus(`재연결 대기 (${Math.round(delay / 1000)}초)`);
+  reconnectTimer = setTimeout(() => {
+    connectWebSocket();
+  }, delay);
 }
 
 function appendWsMessage(line) {
@@ -102,11 +165,13 @@ function sendWsPayload(text) {
 }
 
 function connectWebSocket() {
-  const url = wsUrlEl.value.trim();
+  const url = normalizeWsUrl(wsUrlEl.value);
   if (!url) {
     setWsStatus("URL을 입력하세요");
     return;
   }
+  wsUrlEl.value = url;
+  clearReconnectTimer();
 
   try {
     websocket = new WebSocket(url);
@@ -121,6 +186,7 @@ function connectWebSocket() {
   updateButtons();
 
   websocket.onopen = () => {
+    reconnectAttempts = 0;
     setWsStatus(`연결됨 (${url})`);
     setSessionStatus(null);
     appendWsMessage(`[${new Date().toLocaleTimeString()}] WS 연결됨`);
@@ -131,22 +197,27 @@ function connectWebSocket() {
     appendWsMessage(formatWsIncoming(event.data));
   };
 
-  websocket.onclose = () => {
-    setWsStatus("연결 종료");
+  websocket.onclose = (event) => {
+    const code = event && event.code ? event.code : "-";
+    setWsStatus(`연결 종료 (code:${code})`);
     setSessionStatus(null);
-    appendWsMessage(`[${new Date().toLocaleTimeString()}] WS 연결 종료`);
+    appendWsMessage(`[${new Date().toLocaleTimeString()}] WS 연결 종료 (code:${code})`);
     websocket = null;
     updateButtons();
+    scheduleReconnect();
   };
 
-  websocket.onerror = () => {
-    setWsStatus("오류 발생");
-    appendWsMessage(`[${new Date().toLocaleTimeString()}] WS 오류`);
+  websocket.onerror = (event) => {
+    const detail = event && event.message ? event.message : "서버 상태/URL 확인";
+    setWsStatus(`오류 발생 (${detail})`);
+    appendWsMessage(`[${new Date().toLocaleTimeString()}] WS 오류 (${detail})`);
     updateButtons();
   };
 }
 
 function disconnectWebSocket() {
+  shouldReconnect = false;
+  clearReconnectTimer();
   if (!websocket) return;
   websocket.close();
 }
@@ -208,10 +279,166 @@ function initRecognition() {
   updateButtons();
 }
 
+function toYmd(date = new Date()) {
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+
+function getApiBaseUrl() {
+  const raw = wsUrlEl.value.trim();
+  if (!raw) return window.location.origin;
+
+  try {
+    const url = new URL(raw);
+    if (url.protocol === "ws:") url.protocol = "http:";
+    if (url.protocol === "wss:") url.protocol = "https:";
+    url.pathname = "";
+    url.search = "";
+    url.hash = "";
+    return url.toString().replace(/\/$/, "");
+  } catch (_error) {
+    return window.location.origin;
+  }
+}
+
+async function fetchJson(path, options) {
+  const response = await fetch(`${getApiBaseUrl()}${path}`, options);
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || `HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+function setSessionOptions(sessions) {
+  if (!sessionSelectEl) return;
+  sessionSelectEl.innerHTML = "";
+
+  if (!sessions.length) {
+    const empty = document.createElement("option");
+    empty.value = "";
+    empty.textContent = "미인식 세션 없음";
+    sessionSelectEl.appendChild(empty);
+    applyCorrectionBtn.disabled = true;
+    return;
+  }
+
+  sessions.forEach((session) => {
+    const option = document.createElement("option");
+    option.value = session.sessionId;
+    const started = session.startedAt ? new Date(session.startedAt).toLocaleString() : "-";
+    option.textContent = `${session.sessionId} | ${session.customerName} | 시작:${started}`;
+    sessionSelectEl.appendChild(option);
+  });
+
+  applyCorrectionBtn.disabled = false;
+}
+
+async function loadUnrecognizedSessions() {
+  const day = correctionDateEl.value || toYmd();
+  setCorrectionStatus("조회 중...");
+
+  try {
+    const data = await fetchJson(`/sessions/${day}?status=unrecognized`);
+    setSessionOptions(data.sessions || []);
+    setCorrectionStatus(`조회 완료 (${data.count || 0}건)`);
+  } catch (error) {
+    setCorrectionStatus(`조회 실패 (${error.message})`);
+  }
+}
+
+async function applyCorrection() {
+  const day = correctionDateEl.value || toYmd();
+  const sessionId = sessionSelectEl.value;
+  const customerName = correctCustomerNameEl.value.trim();
+  const correctedBy = correctedByEl.value.trim() || "manual";
+
+  if (!sessionId) {
+    setCorrectionStatus("보정할 세션을 선택하세요");
+    return;
+  }
+  if (!customerName) {
+    setCorrectionStatus("고객명을 입력하세요");
+    return;
+  }
+
+  setCorrectionStatus("저장 중...");
+
+  try {
+    await fetchJson("/sessions/correct", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ date: day, sessionId, customerName, correctedBy })
+    });
+    setCorrectionStatus(`보정 완료 (${customerName})`);
+    correctCustomerNameEl.value = "";
+    await loadUnrecognizedSessions();
+    await loadReport();
+  } catch (error) {
+    setCorrectionStatus(`보정 실패 (${error.message})`);
+  }
+}
+
+function renderReportText(report) {
+  if (!report || !Array.isArray(report.reports)) return "";
+  const lines = [`[${report.date}] 고객별 영업일지 초안`, ""];
+
+  report.reports.forEach((item, index) => {
+    lines.push(`${index + 1}. 고객: ${item.customerName} (${item.customerStatus})`);
+    lines.push(`통화 시작: ${item.firstStartedAt || "-"}`);
+    lines.push(`영업 내용: ${item.draft.salesContent || "-"}`);
+    lines.push(`고객 반응: ${item.draft.customerReaction || "-"}`);
+    lines.push(`향후 계획: ${item.draft.nextPlan || "-"}`);
+    lines.push("");
+  });
+
+  return lines.join("\n");
+}
+
+async function loadReport() {
+  const day = reportDateEl.value || toYmd();
+  setReportStatus("조회 중...");
+
+  try {
+    const report = await fetchJson(`/reports/${day}`);
+    reportPreviewEl.value = renderReportText(report);
+    setReportStatus(`조회 완료 (${report.count || 0}명)`);
+  } catch (error) {
+    setReportStatus(`조회 실패 (${error.message})`);
+  }
+}
+
+async function exportReport(format) {
+  const day = reportDateEl.value || toYmd();
+  const url = `${getApiBaseUrl()}/reports/${day}/export?format=${format}`;
+
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || `HTTP ${response.status}`);
+    }
+    const blob = await response.blob();
+    const link = document.createElement("a");
+    const ext = format === "csv" ? "csv" : "md";
+    link.href = URL.createObjectURL(blob);
+    link.download = `daily-report-${day}.${ext}`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+    setReportStatus(`${format.toUpperCase()} 내보내기 완료`);
+  } catch (error) {
+    setReportStatus(`내보내기 실패 (${error.message})`);
+  }
+}
+
 const suggestedWsUrl = `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}`;
 if (!wsUrlEl.value.trim() || wsUrlEl.value.trim() === "ws://localhost:8080") {
   wsUrlEl.value = suggestedWsUrl;
 }
+
+if (correctionDateEl) correctionDateEl.value = toYmd();
+if (reportDateEl) reportDateEl.value = toYmd();
 
 startBtn.addEventListener("click", () => {
   if (!recognition) return;
@@ -276,10 +503,37 @@ langSelectEl.addEventListener("change", () => {
   recognition.lang = langSelectEl.value;
 });
 
+if (loadUnrecognizedBtn) {
+  loadUnrecognizedBtn.addEventListener("click", loadUnrecognizedSessions);
+}
+
+if (applyCorrectionBtn) {
+  applyCorrectionBtn.addEventListener("click", applyCorrection);
+}
+
+if (loadReportBtn) {
+  loadReportBtn.addEventListener("click", loadReport);
+}
+
+if (exportMdBtn) {
+  exportMdBtn.addEventListener("click", () => exportReport("md"));
+}
+
+if (exportCsvBtn) {
+  exportCsvBtn.addEventListener("click", () => exportReport("csv"));
+}
+
 window.addEventListener("beforeunload", () => {
+  shouldReconnect = false;
+  clearReconnectTimer();
   if (recognition && isListening) recognition.stop();
   if (websocket) websocket.close();
 });
 
 initRecognition();
 updateButtons();
+loadUnrecognizedSessions();
+loadReport();
+
+shouldReconnect = true;
+connectWebSocket();

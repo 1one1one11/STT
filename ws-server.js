@@ -432,6 +432,15 @@ function sendJson(res, statusCode, payload) {
   res.end(JSON.stringify(payload));
 }
 
+function sendText(res, statusCode, contentType, text, fileName) {
+  const headers = { "content-type": contentType };
+  if (fileName) {
+    headers["content-disposition"] = `attachment; filename="${fileName}"`;
+  }
+  res.writeHead(statusCode, headers);
+  res.end(text);
+}
+
 function readJsonBody(req) {
   return new Promise((resolve, reject) => {
     let body = "";
@@ -466,6 +475,101 @@ function inferCustomerReaction(texts) {
   return "반응이 명확히 분류되지 않아 후속 확인이 필요합니다.";
 }
 
+function normalizeConversationTexts(texts) {
+  const seen = new Set();
+  const normalized = [];
+  for (const text of texts) {
+    const value = String(text || "").trim();
+    if (!value) continue;
+    if (normalizeForMatch(value).includes(INTRO_PHRASE)) continue;
+    if (seen.has(value)) continue;
+    seen.add(value);
+    normalized.push(value);
+  }
+  return normalized;
+}
+
+function buildSalesContent(texts) {
+  const normalized = normalizeConversationTexts(texts);
+  if (!normalized.length) {
+    return "통화 핵심 내용이 충분히 기록되지 않아 수기 보완이 필요합니다.";
+  }
+  return normalized.slice(0, 4).join(" / ");
+}
+
+function buildNextPlan(customerStatus) {
+  if (customerStatus === "unrecognized") {
+    return "고객명 수기 보정 후 상담 목적/관심 상품을 재정리하고 재통화 계획을 수립합니다.";
+  }
+  if (customerStatus === "corrected") {
+    return "보정된 고객 정보 기준으로 CRM 반영 후, 다음 통화에서 니즈를 재확인합니다.";
+  }
+  return "다음 통화에서 관심도 확인 및 구체 조건(금액/기간/위험성향)을 확정합니다.";
+}
+
+function escapeCsvCell(value) {
+  const raw = String(value ?? "");
+  if (/[",\n]/.test(raw)) {
+    return `"${raw.replace(/"/g, "\"\"")}"`;
+  }
+  return raw;
+}
+
+function buildReportCsv(report) {
+  const header = [
+    "date",
+    "customerName",
+    "customerStatus",
+    "firstStartedAt",
+    "lastMessageAt",
+    "sessionCount",
+    "messageCount",
+    "salesContent",
+    "customerReaction",
+    "nextPlan"
+  ].join(",");
+
+  const rows = report.reports.map((item) => {
+    return [
+      report.date,
+      item.customerName,
+      item.customerStatus,
+      item.firstStartedAt || "",
+      item.lastMessageAt || "",
+      item.sessionCount,
+      item.messageCount,
+      item.draft.salesContent,
+      item.draft.customerReaction,
+      item.draft.nextPlan
+    ].map(escapeCsvCell).join(",");
+  });
+
+  return [header, ...rows].join("\n");
+}
+
+function buildReportMarkdown(report) {
+  const lines = [`# 영업일지 (${report.date})`, ""];
+
+  for (const item of report.reports) {
+    lines.push(`## ${item.customerName} (${item.customerStatus})`);
+    lines.push(`- 통화 시작: ${item.firstStartedAt || "-"}`);
+    lines.push(`- 최근 통화: ${item.lastMessageAt || "-"}`);
+    lines.push(`- 세션 수: ${item.sessionCount}, 발화 수: ${item.messageCount}`);
+    lines.push("");
+    lines.push("### 영업 내용");
+    lines.push(item.draft.salesContent);
+    lines.push("");
+    lines.push("### 고객 반응");
+    lines.push(item.draft.customerReaction);
+    lines.push("");
+    lines.push("### 향후 계획");
+    lines.push(item.draft.nextPlan);
+    lines.push("");
+  }
+
+  return lines.join("\n");
+}
+
 function buildDailyReportByDate(day, options = {}) {
   const { onlyUnrecognized = false } = options;
   const result = readCustomerConversationsByDate(day, { onlyUnrecognized });
@@ -477,10 +581,17 @@ function buildDailyReportByDate(day, options = {}) {
       return left - right;
     });
     const texts = sortedMessages.map((message) => message.text).filter(Boolean);
-    const salesHighlights = texts.slice(0, 5);
-    const nextPlan = customer.customerStatus === "unrecognized"
-      ? "고객명 수기 보정 후 상담 목적/관심 상품을 재정리합니다."
-      : "다음 통화에서 관심도 확인 및 구체 조건(금액/기간/위험성향) 확정이 필요합니다.";
+    const salesSummary = normalizeConversationTexts(texts).slice(0, 5);
+    const salesContent = buildSalesContent(texts);
+    const customerReaction = inferCustomerReaction(texts);
+    const nextPlan = buildNextPlan(customer.customerStatus);
+    const dailyNote = [
+      `[고객] ${customer.customerName} (${customer.customerStatus})`,
+      `[통화 시작] ${customer.firstStartedAt || "-"}`,
+      `[영업 내용] ${salesContent}`,
+      `[고객 반응] ${customerReaction}`,
+      `[향후 계획] ${nextPlan}`
+    ].join("\n");
 
     return {
       customerName: customer.customerName,
@@ -490,11 +601,13 @@ function buildDailyReportByDate(day, options = {}) {
       sessionCount: customer.sessionCount,
       messageCount: customer.messageCount,
       draft: {
-        salesSummary: salesHighlights.length
-          ? salesHighlights
+        salesSummary: salesSummary.length
+          ? salesSummary
           : ["대화 텍스트가 부족하여 수기 보완이 필요합니다."],
-        customerReaction: inferCustomerReaction(texts),
-        nextPlan
+        salesContent,
+        customerReaction,
+        nextPlan,
+        dailyNote
       }
     };
   });
@@ -503,6 +616,7 @@ function buildDailyReportByDate(day, options = {}) {
     date: day,
     messageFile: result.messageFile,
     sessionFile: result.sessionFile,
+    correctionFile: getSessionCorrectionFileByDay(day),
     count: reports.length,
     reports
   };
@@ -695,11 +809,49 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (urlObj.pathname === "/reports/today/export") {
+    const day = getDateKey(new Date());
+    const onlyUnrecognized = parseUnrecognizedFilter(urlObj);
+    const report = buildDailyReportByDate(day, { onlyUnrecognized });
+    const format = String(urlObj.searchParams.get("format") || "md").toLowerCase();
+    if (format === "md") {
+      sendText(res, 200, "text/markdown; charset=utf-8", buildReportMarkdown(report), `daily-report-${day}.md`);
+      return;
+    }
+    if (format === "csv") {
+      sendText(res, 200, "text/csv; charset=utf-8", buildReportCsv(report), `daily-report-${day}.csv`);
+      return;
+    }
+    sendJson(res, 400, { error: "Invalid format. Use ?format=md or ?format=csv" });
+    return;
+  }
+
   if (urlObj.pathname === "/reports/today") {
     const day = getDateKey(new Date());
     const onlyUnrecognized = parseUnrecognizedFilter(urlObj);
     const report = buildDailyReportByDate(day, { onlyUnrecognized });
     sendJson(res, 200, report);
+    return;
+  }
+
+  if (urlObj.pathname.startsWith("/reports/") && urlObj.pathname.endsWith("/export")) {
+    const day = urlObj.pathname.replace("/reports/", "").replace("/export", "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+      sendJson(res, 400, { error: "Invalid date format. Use /reports/YYYY-MM-DD/export" });
+      return;
+    }
+    const onlyUnrecognized = parseUnrecognizedFilter(urlObj);
+    const report = buildDailyReportByDate(day, { onlyUnrecognized });
+    const format = String(urlObj.searchParams.get("format") || "md").toLowerCase();
+    if (format === "md") {
+      sendText(res, 200, "text/markdown; charset=utf-8", buildReportMarkdown(report), `daily-report-${day}.md`);
+      return;
+    }
+    if (format === "csv") {
+      sendText(res, 200, "text/csv; charset=utf-8", buildReportCsv(report), `daily-report-${day}.csv`);
+      return;
+    }
+    sendJson(res, 400, { error: "Invalid format. Use ?format=md or ?format=csv" });
     return;
   }
 

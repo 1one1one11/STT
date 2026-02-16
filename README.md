@@ -32,6 +32,8 @@ Logs API:
 - `http://localhost:8080/customers/YYYY-MM-DD?status=unrecognized` (날짜별 고객 대화, 미인식 필터)
 - `http://localhost:8080/reports/today` (고객별 영업일지 초안: 영업 내용/고객 반응/향후 계획)
 - `http://localhost:8080/reports/YYYY-MM-DD` (날짜별 영업일지 초안)
+- `http://localhost:8080/reports/today/export?format=md` (일지 Markdown 내보내기)
+- `http://localhost:8080/reports/YYYY-MM-DD/export?format=csv` (일지 CSV 내보내기)
 
 Manual correction API (미인식 수기 보정):
 
@@ -45,6 +47,13 @@ curl -X POST http://localhost:8080/sessions/correct \
     "correctedBy":"seo.pb"
   }'
 ```
+
+UI workflow:
+
+1. `미인식 세션 수기 보정`에서 날짜 선택 후 `미인식 조회`
+2. 세션 선택 + 고객명 입력 후 `보정 저장`
+3. `고객별 영업일지 초안`에서 날짜별 초안 조회
+4. `MD 내보내기` 또는 `CSV 내보내기`로 일일 보고 파일 생성
 
 ### 3) Connect from STT page
 
