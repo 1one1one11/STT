@@ -1,5 +1,6 @@
 const sttStatusEl = document.getElementById("sttStatus");
 const wsStatusEl = document.getElementById("wsStatus");
+const sessionStatusEl = document.getElementById("sessionStatus");
 const finalTextEl = document.getElementById("finalText");
 const interimTextEl = document.getElementById("interimText");
 const langSelectEl = document.getElementById("langSelect");
@@ -30,6 +31,20 @@ function setWsStatus(message) {
   wsStatusEl.textContent = `WS 상태: ${message}`;
 }
 
+function setSessionStatus(session) {
+  if (!session) {
+    sessionStatusEl.textContent = "세션 상태: 미인식";
+    return;
+  }
+
+  const customer = session.customerName || "미인식";
+  const status = session.customerStatus || "unrecognized";
+  const started = session.startedAt
+    ? new Date(session.startedAt).toLocaleString()
+    : "-";
+  sessionStatusEl.textContent = `세션 상태: ${customer} (${status}) | 시작: ${started}`;
+}
+
 function isWsConnected() {
   return websocket && websocket.readyState === WebSocket.OPEN;
 }
@@ -46,7 +61,8 @@ function formatWsIncoming(rawData) {
   try {
     const parsed = JSON.parse(rawData);
     if (parsed.type === "ack") {
-      return `[${now}] ACK ${parsed.receivedAt || ""} ${String(parsed.payload || "").slice(0, 220)}`;
+      setSessionStatus(parsed.session || null);
+      return `[${now}] ACK ${parsed.receivedAt || ""} [고객:${parsed.session?.customerName || "미인식"}] ${String(parsed.payload || "").slice(0, 220)}`;
     }
     if (parsed.type === "welcome") {
       return `[${now}] WELCOME ${parsed.message || ""}`;
@@ -106,6 +122,7 @@ function connectWebSocket() {
 
   websocket.onopen = () => {
     setWsStatus(`연결됨 (${url})`);
+    setSessionStatus(null);
     appendWsMessage(`[${new Date().toLocaleTimeString()}] WS 연결됨`);
     updateButtons();
   };
@@ -116,6 +133,7 @@ function connectWebSocket() {
 
   websocket.onclose = () => {
     setWsStatus("연결 종료");
+    setSessionStatus(null);
     appendWsMessage(`[${new Date().toLocaleTimeString()}] WS 연결 종료`);
     websocket = null;
     updateButtons();
